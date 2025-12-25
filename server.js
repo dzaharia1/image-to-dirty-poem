@@ -88,7 +88,7 @@ app.post('/generate-poem', (req, res, next) => {
     let prompt = basicPrompt;
     if (req.query.type === 'dirty-limerick') {
       prompt = dirtyLimerickPrompt;
-    } else if (req.query.type === 'haiku') {
+    } else if (req.query.type === 'dirty-haiku') {
       prompt = haikuPrompt;
     }
     const result = await model.generateContent([
