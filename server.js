@@ -87,7 +87,7 @@ app.post('/generate-poem', (req, res, next) => {
     const base64Image = imageBuffer.toString('base64');
 
 
-    let prompt = basicPrompt;
+    let prompt = dirtyLimerickPrompt;
     if (req.query.type === 'dirty-limerick') {
       prompt = dirtyLimerickPrompt;
     } else if (req.query.type === 'dirty-haiku') {
@@ -127,7 +127,7 @@ app.post('/generate-poem', (req, res, next) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server is running at http://0.0.0.0:${port}`);
 });
 
