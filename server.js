@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import dotenv from 'dotenv';
 import { basicPrompt, dirtyLimerickPrompt, haikuPrompt } from './systemPrompts.js';
 import fs from 'fs';
@@ -27,6 +29,23 @@ app.use('/image', express.static(path.join(__dirname, 'image')));
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+
+// Initialize Firebase Admin
+if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  try {
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    initializeApp({
+      credential: cert(serviceAccount)
+    });
+    console.log('Firebase Admin initialized');
+  } catch (error) {
+    console.error('Error initializing Firebase Admin:', error);
+  }
+} else {
+  console.warn('FIREBASE_SERVICE_ACCOUNT_KEY not found in .env');
+}
+
+const db = getFirestore();
 
 let lastData;
 
@@ -70,15 +89,6 @@ app.post('/generate-poem', (req, res, next) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Save the image to /image/image.png
-    const imageDir = path.join(__dirname, 'image');
-    if (!fs.existsSync(imageDir)) {
-      fs.mkdirSync(imageDir, { recursive: true });
-    }
-    const imagePath = path.join(imageDir, 'image.png');
-    await fs.promises.writeFile(imagePath, imageBuffer);
-    console.log(`[${new Date().toISOString()}] Image saved to ${imagePath}`);
-
     if (!process.env.GEMINI_API_KEY) {
       console.error('GEMINI_API_KEY is missing');
       return res.status(500).json({ error: 'Server configuration error' });
@@ -120,6 +130,19 @@ app.post('/generate-poem', (req, res, next) => {
     }
 
     res.json(data);
+
+    // Save to Firestore
+    try {
+      const userId = req.query.userid || 'anonymous';
+      await db.collection('poems').add({
+        ...data,
+        userId: userId,
+        timestamp: new Date()
+      });
+      console.log('Poem saved to Firestore for user:', userId);
+    } catch (dbError) {
+      console.error('Error saving to Firestore:', dbError);
+    }
 
   } catch (error) {
     console.error('Error generating poem:', error);
