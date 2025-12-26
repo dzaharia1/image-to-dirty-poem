@@ -20,6 +20,12 @@ const port = 3109;
 
 app.use(cors());
 
+// Disable Cloudflare's automatic script injection
+app.use((req, res, next) => {
+  res.setHeader('cf-edge-cache', 'no-transform');
+  next();
+});
+
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
 

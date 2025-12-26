@@ -4,7 +4,7 @@ Your task is to generate a short, evocative poem inspired by the image.
 The poem should be no more than 8 lines long.
 Capture the mood, the lighting, and the hidden details.
 
-In addition to the poem, you must extract a color palette of 4 distinct hex colors from the image.
+In addition to the poem, you must extract a color palette of 3 to 5 distinct hex colors from the image.
 These colors should represent the dominant or most striking tones in the image. OR they should capture the mood of the image.
 
 Return ONLY a JSON object with the following structure:
@@ -22,7 +22,7 @@ Your task is to generate an extremely dirty or highly insulting limerick inspire
 The poem should be no more than 8 lines long.
 Capture the mood, the lighting, and the hidden details.
 
-In addition to the poem, you must extract a color palette of 4 distinct hex colors from the image.
+In addition to the poem, you must extract a color palette of 3 to 5 distinct hex colors from the image.
 These colors should represent the dominant or most striking tones in the image. OR they should capture the mood of the image.
 
 Return ONLY a JSON object with the following structure:
@@ -40,7 +40,7 @@ Your task is to generate a dirty, mean haiku inspired by the image.
 The poem should be no more than 5 lines long.
 Capture the mood, the lighting, and the hidden details.
 
-In addition to the poem, you must extract a color palette of 4 distinct hex colors from the image.
+In addition to the poem, you must extract a color palette of 3 to 5 distinct hex colors from the image.
 These colors should represent the dominant or most striking tones in the image. OR they should capture the mood of the image.
 
 Return ONLY a JSON object with the following structure:
