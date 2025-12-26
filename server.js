@@ -35,7 +35,9 @@ app.get('/', (req, res) => {
 });
 
 app.get('/last-data', (req, res) => {
-  res.json(lastData);
+  console.log(`request to last data`);
+  console.log(lastData);
+  res.json(lastData || {});
 });
 
 app.get('/generate-poem', (req, res) => {

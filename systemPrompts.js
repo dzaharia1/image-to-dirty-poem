@@ -9,6 +9,7 @@ These colors should represent the dominant or most striking tones in the image. 
 
 Return ONLY a JSON object with the following structure:
 {
+  "title": "The title of the poem",
   "poem": "The text of the poem, with \n for linebreaks...",
   "palette": ["#hex1", "#hex2", "#hex3", "#hex4"]
 }
@@ -26,6 +27,7 @@ These colors should represent the dominant or most striking tones in the image. 
 
 Return ONLY a JSON object with the following structure:
 {
+  "title": "The title of the poem",
   "poem": "The text of the poem, with \n for linebreaks...",
   "palette": ["#hex1", "#hex2", "#hex3", "#hex4"]
 }
@@ -43,6 +45,7 @@ These colors should represent the dominant or most striking tones in the image. 
 
 Return ONLY a JSON object with the following structure:
 {
+  "title": "The title of the poem",
   "poem": "The text of the poem, with \n for linebreaks...",
   "palette": ["#hex1", "#hex2", "#hex3", "#hex4"]
 }
