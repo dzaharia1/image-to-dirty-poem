@@ -69,6 +69,61 @@ app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
 });
 
+app.get('/getPoem', async (req, res) => {
+  try {
+    const userId = req.query.userid;
+    const index = parseInt(req.query.index) || 0;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userid parameter' });
+    }
+
+    const poemsRef = db.collection('poems');
+    
+    // Calculate offset and limit to fetch current, previous, and next poems
+    // If index is 0 (latest), we need index 0 (current) and index 1 (previous/older)
+    // If index > 0, we need index-1 (next/newer), index (current), and index+1 (previous/older)
+    
+    let offset = Math.max(0, index - 1);
+    let limitVal = (index === 0) ? 2 : 3;
+
+    const snapshot = await poemsRef
+      .where('userId', '==', userId)
+      .orderBy('timestamp', 'desc')
+      .offset(offset)
+      .limit(limitVal)
+      .get();
+      
+    if (snapshot.empty) {
+         return res.json({ currentPoem: null, nextPoem: null, previousPoem: null });
+    }
+
+    const docs = snapshot.docs.map(doc => doc.data());
+    
+    let currentPoem = null;
+    let nextPoem = null; // Newer
+    let previousPoem = null; // Older
+    
+    if (index === 0) {
+        // We fetched [index, index+1] -> [0, 1]
+        currentPoem = docs[0] || null;
+        previousPoem = docs[1] || null;
+        nextPoem = null; // No newer poem than the latest
+    } else {
+        // We fetched [index-1, index, index+1]
+        nextPoem = docs[0] || null;
+        currentPoem = docs[1] || null;
+        previousPoem = docs[2] || null;
+    }
+
+    res.json({ currentPoem, nextPoem, previousPoem });
+
+  } catch (error) {
+    console.error('Error fetching poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/generate-poem', (req, res, next) => {
   console.log(`[${new Date().toISOString()}] Received request to /generate-poem`);
   
