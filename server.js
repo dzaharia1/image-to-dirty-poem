@@ -69,6 +69,30 @@ app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
 });
 
+// fetch a list of 50 poems, including each poem's title, index, timestamp and colors, accepts userid as a query parameter and an optional parameter of "page" to fetch a different set of poems
+app.get('/poemList', async (req, res) => {
+  try {
+    const userId = req.query.userid;
+    const page = parseInt(req.query.page) || 1;
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
+    const poemsRef = db.collection('poems');
+    const snapshot = await poemsRef
+      .where('userId', '==', userId)
+      .orderBy('timestamp', 'desc')
+      .offset(offset)
+      .limit(limit)
+      .get();
+
+    const docs = snapshot.docs.map(doc => doc.data());
+    res.json(docs);
+  } catch (error) {
+    console.error('Error fetching poem list:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/getPoem', async (req, res) => {
   try {
     const userId = req.query.userid;
@@ -106,14 +130,14 @@ app.get('/getPoem', async (req, res) => {
     
     if (index === 0) {
         // We fetched [index, index+1] -> [0, 1]
-        currentPoem = docs[0] || null;
-        previousPoem = docs[1] || null;
+        currentPoem = docs[0] ? { ...docs[0], index: 0 } : null;
+        previousPoem = docs[1] ? { ...docs[1], index: 1 } : null;
         nextPoem = null; // No newer poem than the latest
     } else {
         // We fetched [index-1, index, index+1]
-        nextPoem = docs[0] || null;
-        currentPoem = docs[1] || null;
-        previousPoem = docs[2] || null;
+        nextPoem = docs[0] ? { ...docs[0], index: index - 1 } : null;
+        currentPoem = docs[1] ? { ...docs[1], index: index } : null;
+        previousPoem = docs[2] ? { ...docs[2], index: index + 1 } : null;
     }
 
     res.json({ currentPoem, nextPoem, previousPoem });
