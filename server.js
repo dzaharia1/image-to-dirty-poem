@@ -85,7 +85,7 @@ app.get('/poemList', async (req, res) => {
       .limit(limit)
       .get();
 
-    const docs = snapshot.docs.map(doc => doc.data());
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json(docs);
   } catch (error) {
     console.error('Error fetching poem list:', error);
@@ -103,11 +103,11 @@ app.get('/getPoem', async (req, res) => {
     }
 
     const poemsRef = db.collection('poems');
-    
+
     // Calculate offset and limit to fetch current, previous, and next poems
     // If index is 0 (latest), we need index 0 (current) and index 1 (previous/older)
     // If index > 0, we need index-1 (next/newer), index (current), and index+1 (previous/older)
-    
+
     let offset = Math.max(0, index - 1);
     let limitVal = (index === 0) ? 2 : 3;
 
@@ -117,27 +117,27 @@ app.get('/getPoem', async (req, res) => {
       .offset(offset)
       .limit(limitVal)
       .get();
-      
+
     if (snapshot.empty) {
-         return res.json({ currentPoem: null, nextPoem: null, previousPoem: null });
+      return res.json({ currentPoem: null, nextPoem: null, previousPoem: null });
     }
 
-    const docs = snapshot.docs.map(doc => doc.data());
-    
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
     let currentPoem = null;
     let nextPoem = null; // Newer
     let previousPoem = null; // Older
-    
+
     if (index === 0) {
-        // We fetched [index, index+1] -> [0, 1]
-        currentPoem = docs[0] ? { ...docs[0], index: 0 } : null;
-        previousPoem = docs[1] ? { ...docs[1], index: 1 } : null;
-        nextPoem = null; // No newer poem than the latest
+      // We fetched [index, index+1] -> [0, 1]
+      currentPoem = docs[0] ? { ...docs[0], index: 0 } : null;
+      previousPoem = docs[1] ? { ...docs[1], index: 1 } : null;
+      nextPoem = null; // No newer poem than the latest
     } else {
-        // We fetched [index-1, index, index+1]
-        nextPoem = docs[0] ? { ...docs[0], index: index - 1 } : null;
-        currentPoem = docs[1] ? { ...docs[1], index: index } : null;
-        previousPoem = docs[2] ? { ...docs[2], index: index + 1 } : null;
+      // We fetched [index-1, index, index+1]
+      nextPoem = docs[0] ? { ...docs[0], index: index - 1 } : null;
+      currentPoem = docs[1] ? { ...docs[1], index: index } : null;
+      previousPoem = docs[2] ? { ...docs[2], index: index + 1 } : null;
     }
 
     res.json({ currentPoem, nextPoem, previousPoem });
@@ -148,27 +148,53 @@ app.get('/getPoem', async (req, res) => {
   }
 });
 
+app.delete('/deletePoem', async (req, res) => {
+  try {
+    const { id, userid } = req.query;
+    if (!id || !userid) {
+      return res.status(400).json({ error: 'Missing id or userid' });
+    }
+
+    const poemRef = db.collection('poems').doc(id);
+    const doc = await poemRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Poem not found' });
+    }
+
+    if (doc.data().userId !== userid) {
+      return res.status(403).json({ error: 'Unauthorized to delete this poem' });
+    }
+
+    await poemRef.delete();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/generate-poem', (req, res, next) => {
   console.log(`[${new Date().toISOString()}] Received request to /generate-poem`);
-  
-  const contentType = req.headers['content-type'] || '';
-    if (contentType.includes('image/jpeg')) {
-      express.raw({ type: 'image/jpeg', limit: '10mb' })(req, res, next);
-    } else {
-      upload.single('image')(req, res, next);
-    }
-  }, async (req, res) => {
-    try {
-      let imageBuffer;
-      let mimeType;
 
-      if (req.file) {
-        imageBuffer = req.file.buffer;
-        mimeType = req.file.mimetype;
-      } else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
-        imageBuffer = req.body;
-        mimeType = 'image/jpeg';
-      }
+  const contentType = req.headers['content-type'] || '';
+  if (contentType.includes('image/jpeg')) {
+    express.raw({ type: 'image/jpeg', limit: '10mb' })(req, res, next);
+  } else {
+    upload.single('image')(req, res, next);
+  }
+}, async (req, res) => {
+  try {
+    let imageBuffer;
+    let mimeType;
+
+    if (req.file) {
+      imageBuffer = req.file.buffer;
+      mimeType = req.file.mimetype;
+    } else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      imageBuffer = req.body;
+      mimeType = 'image/jpeg';
+    }
 
     if (!imageBuffer) {
       return res.status(400).json({ error: 'No image file provided' });
