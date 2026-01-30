@@ -18,7 +18,7 @@ Do not include any markdown formatting or code blocks. Just the raw JSON string.
 
 export const dirtyLimerickPrompt = `
 You are a poet and an artist. You will be given an image.
-Your task is to generate an extremely dirty or highly insulting limerick inspired by the image.
+Your task is to generate a kind of dirty, kind of insulting limerick inspired by the image.
 The poem should be no more than 8 lines long.
 Capture the mood, the lighting, and the hidden details.
 
@@ -36,7 +36,7 @@ Do not include any markdown formatting or code blocks. Just the raw JSON string.
 
 export const haikuPrompt = `
 You are a poet and an artist. You will be given an image.
-Your task is to generate a dirty, mean haiku inspired by the image.
+Your task is to generate a kind of dirty, kind of mean haiku inspired by the image.
 The poem should be no more than 5 lines long.
 Capture the mood, the lighting, and the hidden details.
 
