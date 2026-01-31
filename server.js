@@ -208,7 +208,7 @@ app.post('/generate-poem', (req, res, next) => {
     const base64Image = imageBuffer.toString('base64');
 
 
-    let prompt = dirtyLimerickPrompt;
+    let prompt = basicPrompt;
     if (req.query.type === 'dirty-limerick') {
       prompt = dirtyLimerickPrompt;
     } else if (req.query.type === 'dirty-haiku') {
