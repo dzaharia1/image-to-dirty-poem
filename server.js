@@ -253,15 +253,28 @@ app.post('/generate-poem', (req, res, next) => {
       return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
     }
 
-    res.json(data);
+    // Add timestamp fields
+    const now = new Date();
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const enrichedData = {
+      ...data,
+      dayOfWeek: daysOfWeek[now.getDay()],
+      date: now.getDate(),
+      month: months[now.getMonth()],
+      year: now.getFullYear()
+    };
+
+    res.json(enrichedData);
 
     // Save to Firestore
     try {
       const userId = req.query.userid || 'anonymous';
       await db.collection('poems').add({
-        ...data,
+        ...enrichedData,
         userId: userId,
-        timestamp: new Date()
+        timestamp: now
       });
       console.log('Poem saved to Firestore for user:', userId);
     } catch (dbError) {
