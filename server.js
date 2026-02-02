@@ -200,6 +200,19 @@ app.post('/generate-poem', (req, res, next) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
+    // Save the image to filesystem
+    try {
+      const imageDir = path.join(__dirname, 'image');
+      if (!fs.existsSync(imageDir)) {
+        fs.mkdirSync(imageDir, { recursive: true });
+      }
+      const imagePath = path.join(imageDir, 'image.png');
+      fs.writeFileSync(imagePath, imageBuffer);
+      console.log('Image saved to:', imagePath);
+    } catch (saveError) {
+      console.error('Error saving image to filesystem:', saveError);
+    }
+
     if (!process.env.GEMINI_API_KEY) {
       console.error('GEMINI_API_KEY is missing');
       return res.status(500).json({ error: 'Server configuration error' });
