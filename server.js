@@ -26,6 +26,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.json()); // Enable JSON body parsing for POST requests
+
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -111,8 +113,13 @@ app.get('/getPoem', async (req, res) => {
     let offset = Math.max(0, index - 1);
     let limitVal = (index === 0) ? 2 : 3;
 
-    const snapshot = await poemsRef
-      .where('userId', '==', userId)
+    let baseQuery = poemsRef.where('userId', '==', userId);
+
+    if (req.query.favoritesOnly === 'true') {
+      baseQuery = baseQuery.where('isFavorite', '==', true);
+    }
+
+    const snapshot = await baseQuery
       .orderBy('timestamp', 'desc')
       .offset(offset)
       .limit(limitVal)
@@ -144,6 +151,46 @@ app.get('/getPoem', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/toggleFavorite', async (req, res) => {
+  try {
+    const { id, userid, status } = req.body; // Expect JSON body
+
+    if (!id || !userid) {
+      return res.status(400).json({ error: 'Missing id or userid' });
+    }
+
+    const poemRef = db.collection('poems').doc(id);
+    const doc = await poemRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Poem not found' });
+    }
+
+    const poemData = doc.data();
+    if (poemData.userId !== userid) {
+      return res.status(403).json({ error: 'Unauthorized to modify this poem' });
+    }
+
+    let newStatus;
+    // explicit status check (boolean or string 'true'/'false')
+    if (status !== undefined) {
+      // Convert string "true"/"false" if sent that way, though body parsing usually handles boolean if JSON
+      newStatus = status === true || status === 'true';
+    } else {
+      // Toggle if no status provided
+      newStatus = !poemData.isFavorite;
+    }
+
+    await poemRef.update({ isFavorite: newStatus });
+
+    res.json({ success: true, isFavorite: newStatus });
+
+  } catch (error) {
+    console.error('Error toggling favorite:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
