@@ -71,6 +71,47 @@ app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
 });
 
+// Migration endpoint to fix existing poems
+app.get('/migrate-poems', async (req, res) => {
+  try {
+    const userId = req.query.userid;
+    console.log(`Starting migration for userId: ${userId || 'ALL USERS'}`);
+    
+    let query = db.collection('poems');
+    if (userId) {
+      query = query.where('userId', '==', userId);
+    }
+    
+    const snapshot = await query.get();
+    console.log(`Found ${snapshot.size} poems to check`);
+    
+    const batch = db.batch();
+    let updateCount = 0;
+    
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.isFavorite === undefined) {
+        batch.update(doc.ref, { isFavorite: false });
+        updateCount++;
+      }
+    });
+    
+    if (updateCount > 0) {
+      await batch.commit();
+    }
+    
+    res.json({ 
+      success: true, 
+      checked: snapshot.size, 
+      updated: updateCount,
+      message: `Updated ${updateCount} poems. Refresh your app now.` 
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // fetch a list of 50 poems, including each poem's title, index, timestamp and colors, accepts userid as a query parameter and an optional parameter of "page" to fetch a different set of poems
 app.get('/poemList', async (req, res) => {
   try {
@@ -82,6 +123,7 @@ app.get('/poemList', async (req, res) => {
     const poemsRef = db.collection('poems');
     const snapshot = await poemsRef
       .where('userId', '==', userId)
+      .orderBy('isFavorite', 'desc')
       .orderBy('timestamp', 'desc')
       .offset(offset)
       .limit(limit)
@@ -90,8 +132,8 @@ app.get('/poemList', async (req, res) => {
     const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json(docs);
   } catch (error) {
-    console.error('Error fetching poem list:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('DETAILED FIRESTORE ERROR:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 
@@ -120,6 +162,7 @@ app.get('/getPoem', async (req, res) => {
     }
 
     const snapshot = await baseQuery
+      .orderBy('isFavorite', 'desc')
       .orderBy('timestamp', 'desc')
       .offset(offset)
       .limit(limitVal)
@@ -321,7 +364,8 @@ app.post('/generate-poem', (req, res, next) => {
       await db.collection('poems').add({
         ...enrichedData,
         userId: userId,
-        timestamp: now
+        timestamp: now,
+        isFavorite: false
       });
       console.log('Poem saved to Firestore for user:', userId);
     } catch (dbError) {
