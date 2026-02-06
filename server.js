@@ -312,6 +312,77 @@ app.delete('/deletePoem', async (req, res) => {
   }
 });
 
+// Get user settings
+app.get('/get-settings', async (req, res) => {
+  try {
+    const { userid } = req.query;
+    if (!userid) {
+      return res.status(400).json({ error: 'Missing userid' });
+    }
+
+    const allowlistRef = db.collection('allowlist');
+    const snapshot = await allowlistRef.where('uid', '==', userid).limit(1).get();
+
+    if (snapshot.empty) {
+      // If user not in allowlist, they shouldn't even be here normally, 
+      // but maybe return empty settings or 404? 
+      // For now, return empty object so frontend can default.
+      return res.json({});
+    }
+
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+
+    // EXCLUDE geminiApiKey from response for security
+    const { geminiApiKey, ...safeSettings } = data;
+    
+    // Return flag indicating if key is set
+    const responseData = {
+      ...safeSettings,
+      hasGeminiApiKey: !!geminiApiKey && geminiApiKey.length > 0
+    };
+
+    res.json(responseData);
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user settings
+app.post('/update-settings', async (req, res) => {
+  try {
+    const { userid, settings } = req.body;
+    
+    if (!userid || !settings) {
+      return res.status(400).json({ error: 'Missing userid or settings' });
+    }
+
+    const allowlistRef = db.collection('allowlist');
+    const snapshot = await allowlistRef.where('uid', '==', userid).limit(1).get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ error: 'User not found in allowlist' });
+    }
+
+    const doc = snapshot.docs[0];
+    
+    // We only update fields that are allowed to be updated
+    const updates = {};
+    if (settings.geminiApiKey !== undefined) updates.geminiApiKey = settings.geminiApiKey;
+    if (settings.timezone !== undefined) updates.timezone = settings.timezone;
+    if (settings.themeMode !== undefined) updates.themeMode = settings.themeMode;
+    if (settings.penName !== undefined) updates.penName = settings.penName;
+
+    await doc.ref.update(updates);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/generate-poem', (req, res, next) => {
   console.log(`[${new Date().toISOString()}] Received request to /generate-poem`);
 
@@ -351,10 +422,37 @@ app.post('/generate-poem', (req, res, next) => {
       console.error('Error saving image to filesystem:', saveError);
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY is missing');
-      return res.status(500).json({ error: 'Server configuration error' });
+    // Determine which API Key to use
+    let apiKey = null;
+    const userId = req.query.userid;
+
+    if (userId) {
+      try {
+        const allowlistRef = db.collection('allowlist');
+        const snapshot = await allowlistRef.where('uid', '==', userId).limit(1).get();
+        
+        if (!snapshot.empty) {
+          const userData = snapshot.docs[0].data();
+          if (userData.geminiApiKey) {
+            apiKey = userData.geminiApiKey;
+            console.log(`Using custom API key for user: ${userId}`);
+          }
+        }
+      } catch (keyError) {
+        console.error('Error fetching user settings for API key:', keyError);
+      }
     }
+
+    if (!apiKey) {
+      console.error('No API Key found for user:', userId);
+      return res.status(400).json({ 
+        error: 'Gemini API Key is missing. Please configure it in your settings.' 
+      });
+    }
+
+    // Initialize Gemini with the selected key
+    const userGenAI = new GoogleGenerativeAI(apiKey);
+    const userModel = userGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const base64Image = imageBuffer.toString('base64');
 
@@ -365,7 +463,7 @@ app.post('/generate-poem', (req, res, next) => {
     } else if (req.query.type === 'dirty-haiku') {
       prompt = haikuPrompt;
     }
-    const result = await model.generateContent([
+    const result = await userModel.generateContent([
       prompt,
       {
         inlineData: {
@@ -408,14 +506,14 @@ app.post('/generate-poem', (req, res, next) => {
 
     // Save to Firestore
     try {
-      const userId = req.query.userid || 'anonymous';
+      const saveUserId = req.query.userid || 'anonymous';
       await db.collection('poems').add({
         ...enrichedData,
-        userId: userId,
+        userId: saveUserId,
         timestamp: now,
         isFavorite: false
       });
-      console.log('Poem saved to Firestore for user:', userId);
+      console.log('Poem saved to Firestore for user:', saveUserId);
     } catch (dbError) {
       console.error('Error saving to Firestore:', dbError);
     }
