@@ -121,10 +121,15 @@ app.get('/poemList', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const poemsRef = db.collection('poems');
-    const snapshot = await poemsRef
-      .where('userId', '==', userId)
-      .orderBy('isFavorite', 'desc')
-      .orderBy('timestamp', 'desc')
+    let query = poemsRef.where('userId', '==', userId);
+
+    if (req.query.sortByDate === 'true') {
+      query = query.orderBy('timestamp', 'desc');
+    } else {
+      query = query.orderBy('isFavorite', 'desc').orderBy('timestamp', 'desc');
+    }
+
+    const snapshot = await query
       .offset(offset)
       .limit(limit)
       .get();
@@ -161,9 +166,17 @@ app.get('/getPoem', async (req, res) => {
       baseQuery = baseQuery.where('isFavorite', '==', true);
     }
 
+    if (req.query.sortByDate === 'true') {
+      // If we are sorting by date, we ignore the isFavorite field
+      baseQuery = baseQuery.orderBy('timestamp', 'desc');
+    } else {
+      // Default behavior: Favorites first, then date
+      baseQuery = baseQuery
+        .orderBy('isFavorite', 'desc')
+        .orderBy('timestamp', 'desc');
+    }
+
     const snapshot = await baseQuery
-      .orderBy('isFavorite', 'desc')
-      .orderBy('timestamp', 'desc')
       .offset(offset)
       .limit(limitVal)
       .get();
