@@ -28,6 +28,26 @@ app.use((req, res, next) => {
 
 app.use(express.json()); // Enable JSON body parsing for POST requests
 
+// In-memory allowlist cache
+let allowedUserIds = new Set();
+
+// Initialize Firestore (this happens later in the file, but we need the db reference)
+// Moving the db initialization up or wrapping the listener in a function that runs after db init is safer.
+// However, seeing line 56 `const db = getFirestore();`... let's reorganize slightly to be safe, 
+// OR just put the listener after db init and the middleware can stay here but check the Set.
+// The middleware:
+app.use((req, res, next) => {
+  const userId = req.query.userid || req.body.userid;
+  // If the allowlist is empty (e.g. startup), we might want to fail open or closed? 
+  // For safety, fail closed, but maybe log a warning if it's size 0.
+  // Actually, if userId is provided, we check. 
+  if (userId && !allowedUserIds.has(userId)) {
+     console.log(`Blocked access attempt from unauthorized user: ${userId}`);
+     return res.status(403).json({ error: 'Access denied: User not on allowlist' });
+  }
+  next();
+});
+
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -54,6 +74,21 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
 }
 
 const db = getFirestore();
+
+// Subscribe to allowlist updates
+db.collection('allowlist').onSnapshot(snapshot => {
+  const newAllowlist = new Set();
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    if (data.uid) {
+      newAllowlist.add(data.uid);
+    }
+  });
+  allowedUserIds = newAllowlist;
+  console.log(`Updated allowlist: ${allowedUserIds.size} users`);
+}, error => {
+  console.error("Error listening to allowlist:", error);
+});
 
 let lastData;
 
