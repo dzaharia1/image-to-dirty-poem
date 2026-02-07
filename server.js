@@ -56,7 +56,10 @@ app.use('/image', express.static(path.join(__dirname, 'image')));
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+const model = genAI.getGenerativeModel({ 
+  model: "gemini-flash-latest",
+  generationConfig: { responseMimeType: "application/json" }
+});
 
 // Initialize Firebase Admin
 if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
@@ -454,9 +457,12 @@ app.post('/generate-poem', (req, res, next) => {
       });
     }
 
-    // Initialize Gemini with the selected key
+    // Initialize Gemini with the selected key and enable JSON mode
     const userGenAI = new GoogleGenerativeAI(apiKey);
-    const userModel = userGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    const userModel = userGenAI.getGenerativeModel({ 
+      model: "gemini-flash-latest",
+      generationConfig: { responseMimeType: "application/json" }
+    });
 
     const base64Image = imageBuffer.toString('base64');
 
@@ -481,7 +487,7 @@ app.post('/generate-poem', (req, res, next) => {
     const text = response.text();
 
     // Clean up the response to ensure it's valid JSON
-    // Sometimes Gemini might wrap the JSON in markdown code blocks
+    // Sometimes Gemini might wrap the JSON in markdown code blocks even in JSON mode
     let jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
     let data;
@@ -490,7 +496,18 @@ app.post('/generate-poem', (req, res, next) => {
       lastData = data;
     } catch (parseError) {
       console.error('Failed to parse JSON from Gemini:', text);
-      return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
+      // Fallback: try to fix literal newlines if they are the cause
+      try {
+        const fixedJson = jsonString 
+          .replace(/\n(?=([^"]*"[^"]*")*[^"]*$)/g, ' ') // Replace newlines NOT inside quotes with space
+          .replace(/\n/g, '\\n') // Replace remaining newlines (inside quotes) with \n
+          .replace(/\r/g, '\\r');
+        data = JSON.parse(fixedJson);
+        lastData = data;
+        console.log('Successfully parsed JSON after literal newline fix');
+      } catch (secondError) {
+        return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
+      }
     }
 
     // Add timestamp fields
