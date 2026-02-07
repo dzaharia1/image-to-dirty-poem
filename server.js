@@ -6,6 +6,7 @@ import multer from 'multer';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import dotenv from 'dotenv';
 import { basicPrompt, dirtyLimerickPrompt, haikuPrompt } from './systemPrompts.js';
 
@@ -61,8 +62,8 @@ app.use((req, res, next) => {
   }
 
   if (allowedUserIds.size > 0 && !allowedUserIds.has(userId)) {
-     console.log(`Blocked access attempt from unauthorized user: ${userId}`);
-     return res.status(403).json({ error: 'Access denied: User not on allowlist' });
+    console.log(`Blocked access attempt from unauthorized user: ${userId}`);
+    return res.status(403).json({ error: 'Access denied: User not on allowlist' });
   }
   next();
 });
@@ -72,7 +73,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ 
+const model = genAI.getGenerativeModel({
   model: "gemini-flash-latest",
   generationConfig: { responseMimeType: "application/json" }
 });
@@ -308,7 +309,7 @@ app.get('/get-settings', async (req, res) => {
 
     // EXCLUDE geminiApiKey from response for security
     const { geminiApiKey, ...safeSettings } = data;
-    
+
     // Return flag indicating if key is set
     const responseData = {
       ...safeSettings,
@@ -326,7 +327,7 @@ app.get('/get-settings', async (req, res) => {
 app.post('/update-settings', async (req, res) => {
   try {
     const { userid, settings } = req.body;
-    
+
     if (!userid || !settings || typeof settings !== 'object') {
       return res.status(400).json({ error: 'Missing userid or invalid settings' });
     }
@@ -339,7 +340,7 @@ app.post('/update-settings', async (req, res) => {
     }
 
     const doc = snapshot.docs[0];
-    
+
     // We only update fields that are allowed to be updated
     const updates = {};
     if (settings.geminiApiKey !== undefined) updates.geminiApiKey = settings.geminiApiKey;
@@ -352,6 +353,108 @@ app.post('/update-settings', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating settings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin: Get all users (whitelisted and others)
+app.get('/admin/users', async (req, res) => {
+  try {
+    const { userid } = req.query;
+    const ADMIN_UID = process.env.ADMIN_UID;
+
+    if (!userid || userid !== ADMIN_UID) {
+      return res.status(403).json({ error: 'Access denied: Unauthorized' });
+    }
+
+    // 1. Get all allowed users from Firestore
+    const allowlistRef = db.collection('allowlist');
+    const allowlistSnapshot = await allowlistRef.get();
+    const allowedUsers = allowlistSnapshot.docs.map(doc => doc.data());
+    const allowedUids = new Set(allowedUsers.map(u => u.uid));
+
+    // 2. Get all users from Firebase Auth
+    // Note: listUsers() retrieves a batch of users (defaults to 1000). 
+    // For a large user base, we'd need pagination, but this should suffice for now.
+    const auth = getAuth();
+    const listUsersResult = await auth.listUsers(1000);
+    const allAuthUsers = listUsersResult.users.map(userRecord => ({
+      uid: userRecord.uid,
+      email: userRecord.email,
+      displayName: userRecord.displayName,
+      metadata: userRecord.metadata,
+    }));
+
+    // 3. Separate into "Allowed" (enriched with auth data if available) and "Others"
+    const allowedList = [];
+    const otherList = [];
+
+    // Map allowed UIDs to their auth data if it exists
+    allowedUsers.forEach(allowedUser => {
+      const authUser = allAuthUsers.find(u => u.uid === allowedUser.uid);
+      allowedList.push({
+        ...allowedUser,
+        email: authUser ? authUser.email : null,
+        displayName: authUser ? authUser.displayName : null,
+        lastSignInTime: authUser ? authUser.metadata.lastSignInTime : null,
+        creationTime: authUser ? authUser.metadata.creationTime : null,
+      });
+    });
+
+    // Find users in Auth but NOT in Allowlist
+    allAuthUsers.forEach(authUser => {
+      if (!allowedUids.has(authUser.uid)) {
+        otherList.push({
+          uid: authUser.uid,
+          email: authUser.email,
+          displayName: authUser.displayName,
+          lastSignInTime: authUser.metadata.lastSignInTime,
+          creationTime: authUser.metadata.creationTime,
+        });
+      }
+    });
+
+    res.json({ allowed: allowedList, others: otherList });
+
+  } catch (error) {
+    console.error('Error fetching admin user lists:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin: Add user to whitelist
+app.post('/admin/add-user', async (req, res) => {
+  try {
+    const { userid, newUid } = req.body;
+    const ADMIN_UID = process.env.ADMIN_UID;
+
+    if (!userid || userid !== ADMIN_UID) {
+      return res.status(403).json({ error: 'Access denied: Unauthorized' });
+    }
+
+    if (!newUid) {
+      return res.status(400).json({ error: 'Missing newUid' });
+    }
+
+    // Check if already exists
+    const allowlistRef = db.collection('allowlist');
+    const snapshot = await allowlistRef.where('uid', '==', newUid).limit(1).get();
+
+    if (!snapshot.empty) {
+      return res.status(400).json({ error: 'User already in whitelist' });
+    }
+
+    // Add to allowlist
+    await allowlistRef.add({
+      uid: newUid,
+      addedAt: new Date(),
+      addedBy: userid
+    });
+
+    res.json({ success: true, uid: newUid });
+
+  } catch (error) {
+    console.error('Error adding user to whitelist:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -391,7 +494,7 @@ app.post('/generate-poem', (req, res, next) => {
       try {
         const allowlistRef = db.collection('allowlist');
         const snapshot = await allowlistRef.where('uid', '==', userId).limit(1).get();
-        
+
         if (!snapshot.empty) {
           const userData = snapshot.docs[0].data();
           if (userData.geminiApiKey) {
@@ -409,14 +512,14 @@ app.post('/generate-poem', (req, res, next) => {
 
     if (!apiKey) {
       console.error('No API Key found for user:', userId);
-      return res.status(400).json({ 
-        error: 'Gemini API Key is missing. Please configure it in your settings.' 
+      return res.status(400).json({
+        error: 'Gemini API Key is missing. Please configure it in your settings.'
       });
     }
 
     // Initialize Gemini with the selected key and enable JSON mode
     const userGenAI = new GoogleGenerativeAI(apiKey);
-    const userModel = userGenAI.getGenerativeModel({ 
+    const userModel = userGenAI.getGenerativeModel({
       model: "gemini-flash-latest",
       generationConfig: { responseMimeType: "application/json" }
     });
@@ -454,7 +557,7 @@ app.post('/generate-poem', (req, res, next) => {
       console.error('Failed to parse JSON from Gemini:', text);
       // Fallback: try to fix literal newlines if they are the cause
       try {
-        const fixedJson = jsonString 
+        const fixedJson = jsonString
           .replace(/\n(?=([^"]*"[^"]*")*[^"]*$)/g, ' ') // Replace newlines NOT inside quotes with space
           .replace(/\n/g, '\\n') // Replace remaining newlines (inside quotes) with \n
           .replace(/\r/g, '\\r');
@@ -469,7 +572,7 @@ app.post('/generate-poem', (req, res, next) => {
     const now = new Date();
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    
+
     let dayOfWeek = daysOfWeek[now.getDay()];
     let dateNum = now.getDate();
     let month = months[now.getMonth()];
