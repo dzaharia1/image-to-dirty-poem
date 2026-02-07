@@ -56,7 +56,10 @@ app.use('/image', express.static(path.join(__dirname, 'image')));
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+const model = genAI.getGenerativeModel({ 
+  model: "gemini-flash-latest",
+  generationConfig: { responseMimeType: "application/json" }
+});
 
 // Initialize Firebase Admin
 if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
@@ -422,8 +425,9 @@ app.post('/generate-poem', (req, res, next) => {
       console.error('Error saving image to filesystem:', saveError);
     }
 
-    // Determine which API Key to use
+    // Determine which API Key to use and get timezone
     let apiKey = null;
+    let userTimezone = null;
     const userId = req.query.userid;
 
     if (userId) {
@@ -437,9 +441,12 @@ app.post('/generate-poem', (req, res, next) => {
             apiKey = userData.geminiApiKey;
             console.log(`Using custom API key for user: ${userId}`);
           }
+          if (userData.timezone) {
+            userTimezone = userData.timezone;
+          }
         }
       } catch (keyError) {
-        console.error('Error fetching user settings for API key:', keyError);
+        console.error('Error fetching user settings:', keyError);
       }
     }
 
@@ -450,9 +457,12 @@ app.post('/generate-poem', (req, res, next) => {
       });
     }
 
-    // Initialize Gemini with the selected key
+    // Initialize Gemini with the selected key and enable JSON mode
     const userGenAI = new GoogleGenerativeAI(apiKey);
-    const userModel = userGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    const userModel = userGenAI.getGenerativeModel({ 
+      model: "gemini-flash-latest",
+      generationConfig: { responseMimeType: "application/json" }
+    });
 
     const base64Image = imageBuffer.toString('base64');
 
@@ -477,7 +487,7 @@ app.post('/generate-poem', (req, res, next) => {
     const text = response.text();
 
     // Clean up the response to ensure it's valid JSON
-    // Sometimes Gemini might wrap the JSON in markdown code blocks
+    // Sometimes Gemini might wrap the JSON in markdown code blocks even in JSON mode
     let jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
     let data;
@@ -486,7 +496,18 @@ app.post('/generate-poem', (req, res, next) => {
       lastData = data;
     } catch (parseError) {
       console.error('Failed to parse JSON from Gemini:', text);
-      return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
+      // Fallback: try to fix literal newlines if they are the cause
+      try {
+        const fixedJson = jsonString 
+          .replace(/\n(?=([^"]*"[^"]*")*[^"]*$)/g, ' ') // Replace newlines NOT inside quotes with space
+          .replace(/\n/g, '\\n') // Replace remaining newlines (inside quotes) with \n
+          .replace(/\r/g, '\\r');
+        data = JSON.parse(fixedJson);
+        lastData = data;
+        console.log('Successfully parsed JSON after literal newline fix');
+      } catch (secondError) {
+        return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
+      }
     }
 
     // Add timestamp fields
@@ -494,12 +515,39 @@ app.post('/generate-poem', (req, res, next) => {
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     
+    let dayOfWeek = daysOfWeek[now.getDay()];
+    let dateNum = now.getDate();
+    let month = months[now.getMonth()];
+    let yearNum = now.getFullYear();
+
+    if (userTimezone) {
+      try {
+        const options = {
+          timeZone: userTimezone,
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(now);
+        const getPart = (type) => parts.find(p => p.type === type).value;
+
+        dayOfWeek = getPart('weekday');
+        dateNum = parseInt(getPart('day'), 10);
+        month = getPart('month');
+        yearNum = parseInt(getPart('year'), 10);
+      } catch (e) {
+        console.error(`Invalid timezone '${userTimezone}', falling back to server time.`);
+      }
+    }
+
     const enrichedData = {
       ...data,
-      dayOfWeek: daysOfWeek[now.getDay()],
-      date: now.getDate(),
-      month: months[now.getMonth()],
-      year: now.getFullYear()
+      dayOfWeek,
+      date: dateNum,
+      month,
+      year: yearNum
     };
 
     res.json(enrichedData);
