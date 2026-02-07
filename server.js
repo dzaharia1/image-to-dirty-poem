@@ -422,8 +422,9 @@ app.post('/generate-poem', (req, res, next) => {
       console.error('Error saving image to filesystem:', saveError);
     }
 
-    // Determine which API Key to use
+    // Determine which API Key to use and get timezone
     let apiKey = null;
+    let userTimezone = null;
     const userId = req.query.userid;
 
     if (userId) {
@@ -437,9 +438,12 @@ app.post('/generate-poem', (req, res, next) => {
             apiKey = userData.geminiApiKey;
             console.log(`Using custom API key for user: ${userId}`);
           }
+          if (userData.timezone) {
+            userTimezone = userData.timezone;
+          }
         }
       } catch (keyError) {
-        console.error('Error fetching user settings for API key:', keyError);
+        console.error('Error fetching user settings:', keyError);
       }
     }
 
@@ -494,12 +498,39 @@ app.post('/generate-poem', (req, res, next) => {
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     
+    let dayOfWeek = daysOfWeek[now.getDay()];
+    let dateNum = now.getDate();
+    let month = months[now.getMonth()];
+    let yearNum = now.getFullYear();
+
+    if (userTimezone) {
+      try {
+        const options = {
+          timeZone: userTimezone,
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(now);
+        const getPart = (type) => parts.find(p => p.type === type).value;
+
+        dayOfWeek = getPart('weekday');
+        dateNum = parseInt(getPart('day'), 10);
+        month = getPart('month');
+        yearNum = parseInt(getPart('year'), 10);
+      } catch (e) {
+        console.error(`Invalid timezone '${userTimezone}', falling back to server time.`);
+      }
+    }
+
     const enrichedData = {
       ...data,
-      dayOfWeek: daysOfWeek[now.getDay()],
-      date: now.getDate(),
-      month: months[now.getMonth()],
-      year: now.getFullYear()
+      dayOfWeek,
+      date: dateNum,
+      month,
+      year: yearNum
     };
 
     res.json(enrichedData);
