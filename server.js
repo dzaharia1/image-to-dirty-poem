@@ -93,17 +93,13 @@ db.collection('allowlist').onSnapshot(snapshot => {
   console.error("Error listening to allowlist:", error);
 });
 
-let lastData;
+
 
 app.get('/', (req, res) => {
   res.send('Poetry Cam Backend');
 });
 
-app.get('/last-data', (req, res) => {
-  console.log(`request to last data`);
-  console.log(lastData);
-  res.json(lastData || {});
-});
+
 
 app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
@@ -493,7 +489,6 @@ app.post('/generate-poem', (req, res, next) => {
     let data;
     try {
       data = JSON.parse(jsonString);
-      lastData = data;
     } catch (parseError) {
       console.error('Failed to parse JSON from Gemini:', text);
       // Fallback: try to fix literal newlines if they are the cause
@@ -503,7 +498,6 @@ app.post('/generate-poem', (req, res, next) => {
           .replace(/\n/g, '\\n') // Replace remaining newlines (inside quotes) with \n
           .replace(/\r/g, '\\r');
         data = JSON.parse(fixedJson);
-        lastData = data;
         console.log('Successfully parsed JSON after literal newline fix');
       } catch (secondError) {
         return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
