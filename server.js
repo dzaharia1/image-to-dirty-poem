@@ -35,7 +35,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json()); // Enable JSON body parsing for POST requests
+// Enable JSON body parsing for POST requests (Must be before auth middleware)
+app.use(express.json());
 
 // In-memory allowlist cache
 let allowedUserIds = new Set();
@@ -118,47 +119,6 @@ app.get('/', (req, res) => {
 
 app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
-});
-
-// Migration endpoint to fix existing poems
-app.get('/migrate-poems', async (req, res) => {
-  try {
-    const userId = req.query.userid;
-    console.log(`Starting migration for userId: ${userId || 'ALL USERS'}`);
-    
-    let query = db.collection('poems');
-    if (userId) {
-      query = query.where('userId', '==', userId);
-    }
-    
-    const snapshot = await query.get();
-    console.log(`Found ${snapshot.size} poems to check`);
-    
-    const batch = db.batch();
-    let updateCount = 0;
-    
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      if (data.isFavorite === undefined) {
-        batch.update(doc.ref, { isFavorite: false });
-        updateCount++;
-      }
-    });
-    
-    if (updateCount > 0) {
-      await batch.commit();
-    }
-    
-    res.json({ 
-      success: true, 
-      checked: snapshot.size, 
-      updated: updateCount,
-      message: `Updated ${updateCount} poems. Refresh your app now.` 
-    });
-  } catch (error) {
-    console.error('Migration error:', error);
-    res.status(500).json({ error: error.message });
-  }
 });
 
 // fetch a list of 50 poems, including each poem's title, index, timestamp and colors, accepts userid as a query parameter and an optional parameter of "page" to fetch a different set of poems
