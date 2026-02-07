@@ -1,4 +1,6 @@
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import multer from 'multer';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -6,17 +8,24 @@ import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import dotenv from 'dotenv';
 import { basicPrompt, dirtyLimerickPrompt, haikuPrompt } from './systemPrompts.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
 const app = express();
-const port = 3109;
+const port = process.env.PORT || 3109;
+
+// Security Middleware
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+// Apply rate limiting to all requests
+app.use(limiter);
 
 app.use(cors());
 
@@ -26,7 +35,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json()); // Enable JSON body parsing for POST requests
+// Enable JSON body parsing for POST requests (Must be before auth middleware)
+app.use(express.json());
 
 // In-memory allowlist cache
 let allowedUserIds = new Set();
@@ -35,13 +45,22 @@ let allowedUserIds = new Set();
 // Moving the db initialization up or wrapping the listener in a function that runs after db init is safer.
 // However, seeing line 56 `const db = getFirestore();`... let's reorganize slightly to be safe, 
 // OR just put the listener after db init and the middleware can stay here but check the Set.
-// The middleware:
+// Authentication Middleware
 app.use((req, res, next) => {
-  const userId = req.query.userid || req.body.userid;
-  // If the allowlist is empty (e.g. startup), we might want to fail open or closed? 
-  // For safety, fail closed, but maybe log a warning if it's size 0.
-  // Actually, if userId is provided, we check. 
-  if (userId && !allowedUserIds.has(userId)) {
+  if (req.path === '/' || req.path === '/favicon.ico') return next();
+
+  const userId = req.query.userid || (req.body && req.body.userid);
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required: Missing userid' });
+  }
+
+  // Validate userid format (alphanumeric, dashes, underscores)
+  if (!/^[a-zA-Z0-9_-]+$/.test(userId)) {
+    return res.status(400).json({ error: 'Invalid userid format' });
+  }
+
+  if (allowedUserIds.size > 0 && !allowedUserIds.has(userId)) {
      console.log(`Blocked access attempt from unauthorized user: ${userId}`);
      return res.status(403).json({ error: 'Access denied: User not on allowlist' });
   }
@@ -50,9 +69,6 @@ app.use((req, res, next) => {
 
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
-
-// Serve static files from the 'image' directory
-app.use('/image', express.static(path.join(__dirname, 'image')));
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -105,52 +121,13 @@ app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
 });
 
-// Migration endpoint to fix existing poems
-app.get('/migrate-poems', async (req, res) => {
-  try {
-    const userId = req.query.userid;
-    console.log(`Starting migration for userId: ${userId || 'ALL USERS'}`);
-    
-    let query = db.collection('poems');
-    if (userId) {
-      query = query.where('userId', '==', userId);
-    }
-    
-    const snapshot = await query.get();
-    console.log(`Found ${snapshot.size} poems to check`);
-    
-    const batch = db.batch();
-    let updateCount = 0;
-    
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      if (data.isFavorite === undefined) {
-        batch.update(doc.ref, { isFavorite: false });
-        updateCount++;
-      }
-    });
-    
-    if (updateCount > 0) {
-      await batch.commit();
-    }
-    
-    res.json({ 
-      success: true, 
-      checked: snapshot.size, 
-      updated: updateCount,
-      message: `Updated ${updateCount} poems. Refresh your app now.` 
-    });
-  } catch (error) {
-    console.error('Migration error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // fetch a list of 50 poems, including each poem's title, index, timestamp and colors, accepts userid as a query parameter and an optional parameter of "page" to fetch a different set of poems
 app.get('/poemList', async (req, res) => {
   try {
     const userId = req.query.userid;
-    const page = parseInt(req.query.page) || 1;
+    let page = parseInt(req.query.page);
+    if (isNaN(page) || page < 1) page = 1;
+
     const limit = 50;
     const offset = (page - 1) * limit;
 
@@ -172,18 +149,15 @@ app.get('/poemList', async (req, res) => {
     res.json(docs);
   } catch (error) {
     console.error('DETAILED FIRESTORE ERROR:', error);
-    res.status(500).json({ error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 app.get('/getPoem', async (req, res) => {
   try {
     const userId = req.query.userid;
-    const index = parseInt(req.query.index) || 0;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'Missing userid parameter' });
-    }
+    let index = parseInt(req.query.index);
+    if (isNaN(index) || index < 0) index = 0;
 
     const poemsRef = db.collection('poems');
 
@@ -353,8 +327,8 @@ app.post('/update-settings', async (req, res) => {
   try {
     const { userid, settings } = req.body;
     
-    if (!userid || !settings) {
-      return res.status(400).json({ error: 'Missing userid or settings' });
+    if (!userid || !settings || typeof settings !== 'object') {
+      return res.status(400).json({ error: 'Missing userid or invalid settings' });
     }
 
     const allowlistRef = db.collection('allowlist');
@@ -406,19 +380,6 @@ app.post('/generate-poem', (req, res, next) => {
 
     if (!imageBuffer) {
       return res.status(400).json({ error: 'No image file provided' });
-    }
-
-    // Save the image to filesystem
-    try {
-      const imageDir = path.join(__dirname, 'image');
-      if (!fs.existsSync(imageDir)) {
-        fs.mkdirSync(imageDir, { recursive: true });
-      }
-      const imagePath = path.join(imageDir, 'image.png');
-      fs.writeFileSync(imagePath, imageBuffer);
-      console.log('Image saved to:', imagePath);
-    } catch (saveError) {
-      console.error('Error saving image to filesystem:', saveError);
     }
 
     // Determine which API Key to use and get timezone
@@ -500,7 +461,7 @@ app.post('/generate-poem', (req, res, next) => {
         data = JSON.parse(fixedJson);
         console.log('Successfully parsed JSON after literal newline fix');
       } catch (secondError) {
-        return res.status(500).json({ error: 'Failed to generate valid JSON', raw: text });
+        return res.status(500).json({ error: 'Failed to generate valid JSON' });
       }
     }
 
@@ -548,7 +509,7 @@ app.post('/generate-poem', (req, res, next) => {
 
     // Save to Firestore
     try {
-      const saveUserId = req.query.userid || 'anonymous';
+      const saveUserId = req.query.userid;
       await db.collection('poems').add({
         ...enrichedData,
         userId: saveUserId,
@@ -562,7 +523,7 @@ app.post('/generate-poem', (req, res, next) => {
 
   } catch (error) {
     console.error('Error generating poem:', error);
-    res.status(500).json({ error: 'Internal server error', details: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
