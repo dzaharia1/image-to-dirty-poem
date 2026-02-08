@@ -16,7 +16,21 @@ const app = express();
 const port = process.env.PORT || 3109;
 
 // Security Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        "https://apis.google.com",
+        "https://www.googleapis.com",
+        "https://static.cloudflareinsights.com"
+      ],
+    },
+  },
+}));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
