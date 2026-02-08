@@ -10,7 +10,6 @@ The **Poetry Cam Backend** is a Node.js server that powers the Poetry Cam device
 
 - **AI Image Processing**: Uses Google's `gemini-flash-latest` model to analyze captured images and generate evocative poems and color palettes.
 - **Persistence**: Automatically saves generated poems and palettes to Firestore for later retrieval in the companion app.
-- **Local Storage**: Caches the last captured image to the filesystem for debugging.
 - **RESTful API**: Provides endpoints for image upload, poem retrieval, and history management.
 - **Customizable Styles**: Supports different poem "types" via query parameters (e.g., standard, dirty limerick, haiku).
 
@@ -79,15 +78,12 @@ npm start
 ### Data Retrieval
 - `GET /poemList?userid=ID&page=1`: Fetches a paginated list (50 per page) of poems for a user.
 - `GET /getPoem?userid=ID&index=0`: Fetches a specific poem by index relative to the latest, along with "previous" and "next" for navigation.
-- `GET /last-data`: Returns the most recently generated poem data (cached in memory).
 
 ### Management
 - `DELETE /deletePoem?id=POEM_ID&userid=ID`: Deletes a specific poem from Firestore (verifies ownership).
-- `GET /image/image.png`: Static delivery of the last uploaded image.
 
 ## Project Structure
 - `server.js`: Main application logic and endpoint definitions.
 - `systemPrompts.js`: The AI instructions for different poetry styles.
-- `image/`: Directory where the last uploaded image is stored.
 - `service-account-key.json`: (Not tracked) Your Firebase credentials.
 

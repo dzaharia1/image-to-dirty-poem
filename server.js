@@ -6,12 +6,6 @@ import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import dotenv from 'dotenv';
 import { basicPrompt, dirtyLimerickPrompt, haikuPrompt } from './systemPrompts.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -50,9 +44,6 @@ app.use((req, res, next) => {
 
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
-
-// Serve static files from the 'image' directory
-app.use('/image', express.static(path.join(__dirname, 'image')));
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -93,13 +84,9 @@ db.collection('allowlist').onSnapshot(snapshot => {
   console.error("Error listening to allowlist:", error);
 });
 
-
-
 app.get('/', (req, res) => {
   res.send('Poetry Cam Backend');
 });
-
-
 
 app.get('/generate-poem', (req, res) => {
   res.send('This endpoint requires a POST request with an image file. To test in the browser, use a tool like Postman or the Poetry Cam hardware.');
@@ -406,19 +393,6 @@ app.post('/generate-poem', (req, res, next) => {
 
     if (!imageBuffer) {
       return res.status(400).json({ error: 'No image file provided' });
-    }
-
-    // Save the image to filesystem
-    try {
-      const imageDir = path.join(__dirname, 'image');
-      if (!fs.existsSync(imageDir)) {
-        fs.mkdirSync(imageDir, { recursive: true });
-      }
-      const imagePath = path.join(imageDir, 'image.png');
-      fs.writeFileSync(imagePath, imageBuffer);
-      console.log('Image saved to:', imagePath);
-    } catch (saveError) {
-      console.error('Error saving image to filesystem:', saveError);
     }
 
     // Determine which API Key to use and get timezone
