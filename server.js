@@ -38,6 +38,11 @@ let allowedUserIds = new Set();
 // The middleware:
 app.use((req, res, next) => {
   const userId = req.query.userid || req.body.userid;
+
+  if (userId && allowedUserIds.size === 0) {
+    console.warn('Allowlist is empty. All access attempts with a userId will be blocked.');
+  }
+
   // If the allowlist is empty (e.g. startup), we might want to fail open or closed? 
   // For safety, fail closed, but maybe log a warning if it's size 0.
   // Actually, if userId is provided, we check. 
