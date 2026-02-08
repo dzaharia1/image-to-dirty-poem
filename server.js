@@ -630,6 +630,12 @@ app.post('/generate-poem', (req, res, next) => {
   }
 });
 
+// Global error handler to prevent stack trace leaks
+app.use((err, req, res, next) => {
+  console.error('Unhandled Error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server is running at http://0.0.0.0:${port}`);
 });
