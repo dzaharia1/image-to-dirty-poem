@@ -44,8 +44,9 @@ let allowedUserIds = new Set();
 
 // Firebase Token Authentication Middleware
 app.use(async (req, res, next) => {
-  // Skip auth for root, favicon, and /generate-poem (Arduino compatibility)
-  if (req.path === '/' || req.path === '/favicon.ico' || req.path === '/generate-poem') {
+  // Skip auth for root, favicon, /generate-poem (Arduino), and public endpoints (WebDisplay/Puppeteer)
+  const publicPaths = ['/', '/favicon.ico', '/generate-poem', '/public/getPoem'];
+  if (publicPaths.includes(req.path)) {
     return next();
   }
 
@@ -234,6 +235,68 @@ app.get('/getPoem', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Public endpoint for WebDisplay/Puppeteer (read-only, no auth required)
+app.get('/public/getPoem', async (req, res) => {
+  try {
+    const userId = req.query.userid; // Accept userid from query param
+    let index = parseInt(req.query.index);
+    if (isNaN(index) || index < 0) index = 0;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userid parameter' });
+    }
+
+    const poemsRef = db.collection('poems');
+    let offset = Math.max(0, index - 1);
+    let limitVal = (index === 0) ? 2 : 3;
+
+    let baseQuery = poemsRef.where('userId', '==', userId);
+
+    if (req.query.favoritesOnly === 'true') {
+      baseQuery = baseQuery.where('isFavorite', '==', true);
+    }
+
+    if (req.query.sortByDate === 'true') {
+      baseQuery = baseQuery.orderBy('timestamp', 'desc');
+    } else {
+      baseQuery = baseQuery
+        .orderBy('isFavorite', 'desc')
+        .orderBy('timestamp', 'desc');
+    }
+
+    const snapshot = await baseQuery
+      .offset(offset)
+      .limit(limitVal)
+      .get();
+
+    if (snapshot.empty) {
+      return res.json({ currentPoem: null, nextPoem: null, previousPoem: null });
+    }
+
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    let currentPoem = null;
+    let nextPoem = null;
+    let previousPoem = null;
+
+    if (index === 0) {
+      currentPoem = docs[0] ? { ...docs[0], index: 0 } : null;
+      previousPoem = docs[1] ? { ...docs[1], index: 1 } : null;
+      nextPoem = null;
+    } else {
+      nextPoem = docs[0] ? { ...docs[0], index: index - 1 } : null;
+      currentPoem = docs[1] ? { ...docs[1], index: index } : null;
+      previousPoem = docs[2] ? { ...docs[2], index: index + 1 } : null;
+    }
+
+    res.json({ currentPoem, nextPoem, previousPoem });
+
+  } catch (error) {
+    console.error('Error fetching poem (public):', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -525,9 +588,10 @@ app.post('/generate-poem', (req, res, next) => {
       return res.status(401).json({ error: 'Authentication required: Missing token or userid' });
     }
 
-    // Determine which API Key to use and get timezone
+    // Determine which API Key to use and get timezone and pen name
     let apiKey = null;
     let userTimezone = null;
+    let penName = null;
 
     if (userId) {
       try {
@@ -542,6 +606,9 @@ app.post('/generate-poem', (req, res, next) => {
           }
           if (userData.timezone) {
             userTimezone = userData.timezone;
+          }
+          if (userData.penName) {
+            penName = userData.penName;
           }
         }
       } catch (keyError) {
@@ -656,7 +723,8 @@ app.post('/generate-poem', (req, res, next) => {
         ...enrichedData,
         userId: saveUserId,
         timestamp: now,
-        isFavorite: false
+        isFavorite: false,
+        penName: penName || '' // Include pen name in poem document
       });
       console.log('Poem saved to Firestore for user:', saveUserId);
     } catch (dbError) {
