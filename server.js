@@ -42,30 +42,48 @@ app.use(express.json());
 // In-memory allowlist cache
 let allowedUserIds = new Set();
 
-// Initialize Firestore (this happens later in the file, but we need the db reference)
-// Moving the db initialization up or wrapping the listener in a function that runs after db init is safer.
-// However, seeing line 56 `const db = getFirestore();`... let's reorganize slightly to be safe, 
-// OR just put the listener after db init and the middleware can stay here but check the Set.
-// Authentication Middleware
-app.use((req, res, next) => {
-  if (req.path === '/' || req.path === '/favicon.ico') return next();
-
-  const userId = req.query.userid || (req.body && req.body.userid);
-
-  if (!userId) {
-    return res.status(401).json({ error: 'Authentication required: Missing userid' });
+// Firebase Token Authentication Middleware
+app.use(async (req, res, next) => {
+  // Skip auth for root, favicon, and /generate-poem (Arduino compatibility)
+  if (req.path === '/' || req.path === '/favicon.ico' || req.path === '/generate-poem') {
+    return next();
   }
 
-  // Validate userid format (alphanumeric, dashes, underscores)
-  if (!/^[a-zA-Z0-9_-]+$/.test(userId)) {
-    return res.status(400).json({ error: 'Invalid userid format' });
-  }
+  try {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required: Missing or invalid token' });
+    }
 
-  if (allowedUserIds.size > 0 && !allowedUserIds.has(userId)) {
-    console.log(`Blocked access attempt from unauthorized user: ${userId}`);
-    return res.status(403).json({ error: 'Access denied: User not on allowlist' });
+    const idToken = authHeader.split('Bearer ')[1];
+    
+    // Verify the token with Firebase Admin
+    const decodedToken = await getAuth().verifyIdToken(idToken);
+    
+    // Extract verified UID and attach to request
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email
+    };
+
+    // Verify user is on allowlist
+    if (allowedUserIds.size > 0 && !allowedUserIds.has(req.user.uid)) {
+      console.log(`Blocked access attempt from unauthorized user: ${req.user.uid}`);
+      return res.status(403).json({ error: 'Access denied: User not on allowlist' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Token verification error:', error);
+    
+    if (error.code === 'auth/id-token-expired') {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    
+    return res.status(401).json({ error: 'Invalid authentication token' });
   }
-  next();
 });
 
 // Configure Multer for memory storage
@@ -125,7 +143,7 @@ app.get('/generate-poem', (req, res) => {
 // fetch a list of 50 poems, including each poem's title, index, timestamp and colors, accepts userid as a query parameter and an optional parameter of "page" to fetch a different set of poems
 app.get('/poemList', async (req, res) => {
   try {
-    const userId = req.query.userid;
+    const userId = req.user.uid; // Use verified UID from token
     let page = parseInt(req.query.page);
     if (isNaN(page) || page < 1) page = 1;
 
@@ -156,7 +174,7 @@ app.get('/poemList', async (req, res) => {
 
 app.get('/getPoem', async (req, res) => {
   try {
-    const userId = req.query.userid;
+    const userId = req.user.uid; // Use verified UID from token
     let index = parseInt(req.query.index);
     if (isNaN(index) || index < 0) index = 0;
 
@@ -222,10 +240,11 @@ app.get('/getPoem', async (req, res) => {
 
 app.post('/toggleFavorite', async (req, res) => {
   try {
-    const { id, userid, status } = req.body; // Expect JSON body
+    const { id, status } = req.body; // Expect JSON body
+    const userid = req.user.uid; // Use verified UID from token
 
-    if (!id || !userid) {
-      return res.status(400).json({ error: 'Missing id or userid' });
+    if (!id) {
+      return res.status(400).json({ error: 'Missing id' });
     }
 
     const poemRef = db.collection('poems').doc(id);
@@ -262,9 +281,10 @@ app.post('/toggleFavorite', async (req, res) => {
 
 app.delete('/deletePoem', async (req, res) => {
   try {
-    const { id, userid } = req.query;
-    if (!id || !userid) {
-      return res.status(400).json({ error: 'Missing id or userid' });
+    const { id } = req.query;
+    const userid = req.user.uid; // Use verified UID from token
+    if (!id) {
+      return res.status(400).json({ error: 'Missing id' });
     }
 
     const poemRef = db.collection('poems').doc(id);
@@ -289,10 +309,7 @@ app.delete('/deletePoem', async (req, res) => {
 // Get user settings
 app.get('/get-settings', async (req, res) => {
   try {
-    const { userid } = req.query;
-    if (!userid) {
-      return res.status(400).json({ error: 'Missing userid' });
-    }
+    const userid = req.user.uid; // Use verified UID from token
 
     const allowlistRef = db.collection('allowlist');
     const snapshot = await allowlistRef.where('uid', '==', userid).limit(1).get();
@@ -326,10 +343,11 @@ app.get('/get-settings', async (req, res) => {
 // Update user settings
 app.post('/update-settings', async (req, res) => {
   try {
-    const { userid, settings } = req.body;
+    const { settings } = req.body;
+    const userid = req.user.uid; // Use verified UID from token
 
-    if (!userid || !settings || typeof settings !== 'object') {
-      return res.status(400).json({ error: 'Missing userid or invalid settings' });
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ error: 'Invalid settings' });
     }
 
     const allowlistRef = db.collection('allowlist');
@@ -360,10 +378,10 @@ app.post('/update-settings', async (req, res) => {
 // Admin: Get all users (whitelisted and others)
 app.get('/admin/users', async (req, res) => {
   try {
-    const { userid } = req.query;
+    const userid = req.user.uid; // Use verified UID from token
     const ADMIN_UID = process.env.ADMIN_UID;
 
-    if (!userid || userid !== ADMIN_UID) {
+    if (userid !== ADMIN_UID) {
       return res.status(403).json({ error: 'Access denied: Unauthorized' });
     }
 
@@ -425,10 +443,11 @@ app.get('/admin/users', async (req, res) => {
 // Admin: Add user to whitelist
 app.post('/admin/add-user', async (req, res) => {
   try {
-    const { userid, newUid } = req.body;
+    const { newUid } = req.body;
+    const userid = req.user.uid; // Use verified UID from token
     const ADMIN_UID = process.env.ADMIN_UID;
 
-    if (!userid || userid !== ADMIN_UID) {
+    if (userid !== ADMIN_UID) {
       return res.status(403).json({ error: 'Access denied: Unauthorized' });
     }
 
@@ -485,10 +504,30 @@ app.post('/generate-poem', (req, res, next) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
+    // Dual Authentication: Try token first (web), fallback to userid (Arduino)
+    let userId = null;
+    
+    // Try to get UID from verified token first (web clients)
+    if (req.user && req.user.uid) {
+      userId = req.user.uid;
+      console.log(`Using verified UID from token: ${userId}`);
+    } else if (req.query.userid) {
+      // Fallback to userid parameter (Arduino compatibility)
+      userId = req.query.userid;
+      console.log(`Using userid parameter (Arduino): ${userId}`);
+      
+      // Verify userid is on allowlist (same check as old middleware)
+      if (allowedUserIds.size > 0 && !allowedUserIds.has(userId)) {
+        console.log(`Blocked access attempt from unauthorized user: ${userId}`);
+        return res.status(403).json({ error: 'Access denied: User not on allowlist' });
+      }
+    } else {
+      return res.status(401).json({ error: 'Authentication required: Missing token or userid' });
+    }
+
     // Determine which API Key to use and get timezone
     let apiKey = null;
     let userTimezone = null;
-    const userId = req.query.userid;
 
     if (userId) {
       try {
