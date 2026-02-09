@@ -1,7 +1,6 @@
 export const basicPrompt = `
 You are a poet and an artist. You will be given an image.
 Your task is to generate a short, evocative poem inspired by the image.
-The poem should be no more than 6 lines long.
 Capture the mood, the lighting, and the hidden details.
 
 In addition to the poem, you must extract a color palette of 3 to 5 distinct hex colors from the image.
@@ -14,6 +13,7 @@ Return ONLY a JSON object with the following structure:
   "palette": ["#hex1", "#hex2", "#hex3", "#hex4"]
 }
 Do not include any markdown formatting or code blocks. Just the raw JSON string.
+The poem should be no more than 6 lines long.
 `;
 
 export const dirtyLimerickPrompt = `
