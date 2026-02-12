@@ -91,3 +91,20 @@ npm start
 - `image/`: Directory where the last uploaded image is stored.
 - `service-account-key.json`: (Not tracked) Your Firebase credentials.
 
+## Testing
+
+The project includes a comprehensive test suite using Jest and Supertest.
+
+### Running Tests
+To run the full test suite:
+```bash
+npm test
+```
+
+### Test Structure
+- `tests/utils`: Unit tests for utility functions.
+- `tests/middleware`: Tests for authentication and middleware.
+- `tests/integration`: Integration tests for API routes (`poems`, `users`, `admin`), utilizing mocked Firebase and Gemini services.
+
+### Configuration
+Tests run in a mocked environment where Firebase and external APIs are mocked using Jest. You do not need real credentials to run tests.
