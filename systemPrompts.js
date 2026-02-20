@@ -52,5 +52,5 @@ Do not include any markdown formatting or code blocks. Just the raw JSON string.
 `;
 
 export const sketchPrompt = `
-I am going to give you a poem. Generate an image that best represents what you think the poem is visually about. Use a hand drawn, charcoal style, after Rembrandt or hopper.
+I am going to give you a poem. Generate an image that best represents what you think the poem is visually about. Use a hand drawn, charcoal style, after Rembrandt or hopper. Do not include the text of the poem in the image.
 `;
