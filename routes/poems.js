@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { listPoems, getPoem, getPublicPoem, toggleFavorite, deletePoem, generatePoem } from '../controllers/poemController.js';
+import { listPoems, getPoem, getPublicPoem, toggleFavorite, deletePoem, generatePoem, generateSketch } from '../controllers/poemController.js';
 
 const router = express.Router();
 
@@ -21,6 +21,7 @@ router.post('/generate-poem', (req, res, next) => {
   }
 }, generatePoem);
 
+router.post('/generate-sketch', generateSketch);
 router.post('/toggleFavorite', toggleFavorite);
 router.delete('/deletePoem', deletePoem);
 

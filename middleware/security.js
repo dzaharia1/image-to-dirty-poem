@@ -16,6 +16,11 @@ export const configureSecurity = (app) => {
           "https://www.googleapis.com",
           "https://static.cloudflareinsights.com"
         ],
+        "img-src": [
+          "'self'",
+          "data:",
+          "https://storage.googleapis.com"
+        ],
       },
     },
   }));
