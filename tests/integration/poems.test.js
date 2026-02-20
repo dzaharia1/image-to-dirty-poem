@@ -76,6 +76,7 @@ const mockGoogleGenerativeAI = jest.fn(() => ({
 // Setup mocks via unstable_mockModule BEFORE importing app
 jest.unstable_mockModule('../../config/firebase.js', () => ({
   db: mockDb,
+  storage: { bucket: jest.fn() }, // Simple mock for storage as it's not used in these tests directly but imported
 }));
 
 jest.unstable_mockModule('firebase-admin/auth', () => ({

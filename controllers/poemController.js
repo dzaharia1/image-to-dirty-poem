@@ -1,6 +1,6 @@
-import { db } from '../config/firebase.js';
+import { db, storage } from '../config/firebase.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { basicPrompt, dirtyLimerickPrompt, haikuPrompt } from '../systemPrompts.js';
+import { basicPrompt, dirtyLimerickPrompt, haikuPrompt, sketchPrompt } from '../systemPrompts.js';
 import { formatDate } from '../utils/helpers.js';
 import { allowedUserIds } from '../middleware/auth.js';
 
@@ -215,6 +215,101 @@ export const deletePoem = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const generateSketch = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { id, title, poem } = req.body;
+
+    if (!id || !title || !poem) {
+      return res.status(400).json({ error: 'Missing poem details (id, title, poem)' });
+    }
+
+    // Verify ownership
+    const poemRef = db.collection('poems').doc(id);
+    const doc = await poemRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Poem not found' });
+    }
+
+    if (doc.data().userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get API Key
+    let apiKey = null;
+    try {
+      const allowlistRef = db.collection('allowlist');
+      const snapshot = await allowlistRef.where('uid', '==', userId).limit(1).get();
+
+      if (!snapshot.empty) {
+        const userData = snapshot.docs[0].data();
+        if (userData.geminiApiKey) {
+          apiKey = userData.geminiApiKey;
+        }
+      }
+    } catch (keyError) {
+      console.error('Error fetching user settings:', keyError);
+    }
+
+    if (!apiKey) {
+      return res.status(400).json({
+        error: 'Gemini API Key is missing. Please configure it in your settings.'
+      });
+    }
+
+    // Initialize Gemini with the selected key
+    const userGenAI = new GoogleGenerativeAI(apiKey);
+    const userModel = userGenAI.getGenerativeModel({
+      model: "gemini-2.5-flash-image",
+      systemInstruction: sketchPrompt
+    });
+
+    const prompt = `Title: ${title}\nPoem: ${poem}`;
+
+    const result = await userModel.generateContent(prompt);
+    const response = await result.response;
+
+    // Check for image in response candidates
+    // Typically image generation models return image data in parts
+    const candidates = response.candidates;
+    if (!candidates || candidates.length === 0) {
+       throw new Error("No content generated");
+    }
+
+    // Looking for inlineData which usually holds the image
+    const part = candidates[0].content.parts.find(p => p.inlineData);
+
+    if (!part || !part.inlineData) {
+        console.error("Response structure:", JSON.stringify(candidates, null, 2));
+        throw new Error("No image data found in response");
+    }
+
+    const base64Image = part.inlineData.data;
+    const buffer = Buffer.from(base64Image, 'base64');
+
+    // Upload to Firebase Storage
+    const bucket = storage.bucket();
+    const file = bucket.file(`sketches/${id}.png`);
+
+    await file.save(buffer, {
+        metadata: { contentType: 'image/png' }
+    });
+
+    await file.makePublic();
+    const publicUrl = file.publicUrl();
+
+    // Update Poem
+    await poemRef.update({ sketchUrl: publicUrl });
+
+    res.json({ sketchUrl: publicUrl });
+
+  } catch (error) {
+    console.error('Error generating sketch:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
