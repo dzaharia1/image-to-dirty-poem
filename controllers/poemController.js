@@ -432,7 +432,13 @@ export const generatePoem = async (req, res) => {
     const userGenAI = new GoogleGenerativeAI(apiKey);
     const userModel = userGenAI.getGenerativeModel({
       model: "gemini-flash-latest",
-      generationConfig: { responseMimeType: "application/json" }
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 300,
+        thinkingConfig: {
+          thinkingBudget: 0
+        }
+      }
     });
 
     const base64Image = imageBuffer.toString('base64');
