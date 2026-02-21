@@ -69,8 +69,9 @@ const mockVerifyIdToken = jest.fn();
 const mockGenerativeModel = {
   generateContent: jest.fn(),
 };
+const mockGetGenerativeModel = jest.fn(() => mockGenerativeModel);
 const mockGoogleGenerativeAI = jest.fn(() => ({
-  getGenerativeModel: jest.fn(() => mockGenerativeModel),
+  getGenerativeModel: mockGetGenerativeModel,
 }));
 
 // Setup mocks via unstable_mockModule BEFORE importing app
@@ -224,6 +225,15 @@ describe('Poem Routes Integration', () => {
       expect(res.status).toBe(200);
       expect(res.body.title).toBe('Generated Poem');
       expect(mockGenerativeModel.generateContent).toHaveBeenCalled();
+      expect(mockGetGenerativeModel).toHaveBeenCalledWith(expect.objectContaining({
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 300,
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
+        }
+      }));
     });
   });
 });

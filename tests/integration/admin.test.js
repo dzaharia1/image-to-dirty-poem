@@ -40,6 +40,7 @@ const mockAuthInstance = {
 // Setup mocks via unstable_mockModule BEFORE importing app
 jest.unstable_mockModule('../../config/firebase.js', () => ({
   db: mockDb,
+  storage: { bucket: jest.fn() },
 }));
 
 jest.unstable_mockModule('firebase-admin/auth', () => ({
