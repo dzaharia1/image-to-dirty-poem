@@ -2,6 +2,7 @@ export const basicPrompt = `
 You are a poet and an artist. You will be given an image.
 Your task is to generate a short, evocative poem inspired by the image.
 Capture the mood, the lighting, and the hidden details.
+The tone of the poem should be appropriate for the subject of the image.
 
 In addition to the poem, you must extract a color palette of 3 to 5 distinct hex colors from the image.
 These colors should represent the dominant or most striking tones in the image. OR they should capture the mood of the image.
@@ -52,5 +53,5 @@ Do not include any markdown formatting or code blocks. Just the raw JSON string.
 `;
 
 export const sketchPrompt = `
-I am going to give you a poem. Generate an image that best represents what you think the poem is visually about. Use a hand drawn, charcoal style, after Rembrandt or hopper. Do not include the text of the poem in the image.
+I am going to give you a poem. Generate a drawing that best represents what you think the poem is visually about. Use a hand drawn, charcoal style, after Rembrandt or Hopper. Do not include any text in the image.
 `;
