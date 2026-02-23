@@ -1,3 +1,4 @@
+// all of the server configuration and logic is in app.js for easier testing
 import app from './app.js';
 import dotenv from 'dotenv';
 
