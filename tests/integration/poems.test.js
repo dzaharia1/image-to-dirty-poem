@@ -192,6 +192,85 @@ describe('Poem Routes Integration', () => {
     });
   });
 
+  describe('GET /public/getWebDisplayPoem', () => {
+    test('should return the web display poem', async () => {
+      mockGet
+        .mockResolvedValueOnce({
+          empty: false,
+          docs: [{ data: () => ({ uid: 'testUser', webDisplayPoem: 'poem123' }) }],
+        })
+        .mockResolvedValueOnce({
+          exists: true,
+          id: 'poem123',
+          data: () => ({ userId: 'testUser', title: 'My Poem', poem: 'Line 1' }),
+        });
+
+      const res = await request(app).get('/public/getWebDisplayPoem?userid=testUser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.currentPoem.title).toBe('My Poem');
+      expect(res.body.currentPoem.id).toBe('poem123');
+    });
+
+    test('should return 400 if userid is missing', async () => {
+      const res = await request(app).get('/public/getWebDisplayPoem');
+      expect(res.status).toBe(400);
+    });
+
+    test('should return null if user not in allowlist', async () => {
+      mockGet.mockResolvedValueOnce({ empty: true, docs: [] });
+
+      const res = await request(app).get('/public/getWebDisplayPoem?userid=testUser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.currentPoem).toBeNull();
+    });
+
+    test('should return null if no webDisplayPoem set', async () => {
+      mockGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [{ data: () => ({ uid: 'testUser' }) }],
+      });
+
+      const res = await request(app).get('/public/getWebDisplayPoem?userid=testUser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.currentPoem).toBeNull();
+    });
+
+    test('should return null if poem does not exist', async () => {
+      mockGet
+        .mockResolvedValueOnce({
+          empty: false,
+          docs: [{ data: () => ({ uid: 'testUser', webDisplayPoem: 'poem123' }) }],
+        })
+        .mockResolvedValueOnce({ exists: false });
+
+      const res = await request(app).get('/public/getWebDisplayPoem?userid=testUser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.currentPoem).toBeNull();
+    });
+
+    test('should return null if poem is owned by a different user', async () => {
+      mockGet
+        .mockResolvedValueOnce({
+          empty: false,
+          docs: [{ data: () => ({ uid: 'testUser', webDisplayPoem: 'poem123' }) }],
+        })
+        .mockResolvedValueOnce({
+          exists: true,
+          id: 'poem123',
+          data: () => ({ userId: 'otherUser', title: 'Not Mine' }),
+        });
+
+      const res = await request(app).get('/public/getWebDisplayPoem?userid=testUser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.currentPoem).toBeNull();
+    });
+  });
+
   describe('POST /generate-poem', () => {
     test('should generate poem successfully', async () => {
       // Mock Gemini Response

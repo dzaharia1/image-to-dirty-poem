@@ -154,6 +154,39 @@ export const getPublicPoem = async (req, res) => {
   }
 };
 
+export const getWebDisplayPoem = async (req, res) => {
+  try {
+    const userId = req.query.userid;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userid parameter' });
+    }
+
+    const allowlistSnapshot = await db.collection('allowlist').where('uid', '==', userId).limit(1).get();
+
+    if (allowlistSnapshot.empty) {
+      return res.json({ currentPoem: null });
+    }
+
+    const webDisplayPoemId = allowlistSnapshot.docs[0].data().webDisplayPoem;
+
+    if (!webDisplayPoemId) {
+      return res.json({ currentPoem: null });
+    }
+
+    const poemDoc = await db.collection('poems').doc(webDisplayPoemId).get();
+
+    if (!poemDoc.exists || poemDoc.data().userId !== userId) {
+      return res.json({ currentPoem: null });
+    }
+
+    res.json({ currentPoem: { id: poemDoc.id, ...poemDoc.data() } });
+  } catch (error) {
+    console.error('Error fetching web display poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const toggleFavorite = async (req, res) => {
   try {
     const { id, status } = req.body;

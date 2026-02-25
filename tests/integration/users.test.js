@@ -147,4 +147,95 @@ describe('User Routes Integration', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('GET /uses-web-display', () => {
+    afterEach(() => {
+      delete process.env.WEB_DISPLAY_USER;
+    });
+
+    test('should return true when uid matches WEB_DISPLAY_USER', async () => {
+      process.env.WEB_DISPLAY_USER = 'testUser';
+
+      const res = await request(app)
+        .get('/uses-web-display')
+        .set('Authorization', 'Bearer validtoken');
+
+      expect(res.status).toBe(200);
+      expect(res.body.usesWebDisplay).toBe(true);
+    });
+
+    test('should return false when uid does not match WEB_DISPLAY_USER', async () => {
+      process.env.WEB_DISPLAY_USER = 'otherUser';
+
+      const res = await request(app)
+        .get('/uses-web-display')
+        .set('Authorization', 'Bearer validtoken');
+
+      expect(res.status).toBe(200);
+      expect(res.body.usesWebDisplay).toBe(false);
+    });
+
+    test('should return false when WEB_DISPLAY_USER is not set', async () => {
+      const res = await request(app)
+        .get('/uses-web-display')
+        .set('Authorization', 'Bearer validtoken');
+
+      expect(res.status).toBe(200);
+      expect(res.body.usesWebDisplay).toBe(false);
+    });
+  });
+
+  describe('POST /set-web-display-poem', () => {
+    test('should set webDisplayPoem for the user', async () => {
+      mockGet.mockResolvedValue({
+        empty: false,
+        docs: [{
+          id: 'docId',
+          ref: { update: mockUpdate },
+          data: () => ({ uid: 'testUser' }),
+        }],
+      });
+
+      const res = await request(app)
+        .post('/set-web-display-poem')
+        .set('Authorization', 'Bearer validtoken')
+        .send({ poemId: 'poem123' });
+
+      expect(res.status).toBe(200);
+      expect(mockUpdate).toHaveBeenCalledWith({ webDisplayPoem: 'poem123' });
+    });
+
+    test('should clear webDisplayPoem when poemId is null', async () => {
+      mockGet.mockResolvedValue({
+        empty: false,
+        docs: [{
+          id: 'docId',
+          ref: { update: mockUpdate },
+          data: () => ({ uid: 'testUser' }),
+        }],
+      });
+
+      const res = await request(app)
+        .post('/set-web-display-poem')
+        .set('Authorization', 'Bearer validtoken')
+        .send({ poemId: null });
+
+      expect(res.status).toBe(200);
+      expect(mockUpdate).toHaveBeenCalledWith({ webDisplayPoem: null });
+    });
+
+    test('should return 404 if user not found in allowlist', async () => {
+      mockGet.mockResolvedValue({
+        empty: true,
+        docs: [],
+      });
+
+      const res = await request(app)
+        .post('/set-web-display-poem')
+        .set('Authorization', 'Bearer validtoken')
+        .send({ poemId: 'poem123' });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });

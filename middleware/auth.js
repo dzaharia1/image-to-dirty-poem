@@ -25,7 +25,7 @@ export const authenticate = async (req, res, next) => {
   // Skip auth for root, favicon, /generate-poem (Arduino), and public endpoints (WebDisplay/Puppeteer)
   // Note: /generate-poem and /public/getPoem handle their own auth or are public.
   // However, in the original server.js, /generate-poem was excluded from the global auth middleware using this check.
-  const publicPaths = ['/', '/favicon.ico', '/generate-poem', '/public/getPoem'];
+  const publicPaths = ['/', '/favicon.ico', '/generate-poem', '/public/getPoem', '/public/getWebDisplayPoem'];
   if (publicPaths.includes(req.path)) {
     return next();
   }

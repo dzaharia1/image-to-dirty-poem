@@ -66,3 +66,29 @@ export const updateSettings = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const usesWebDisplay = (req, res) => {
+  const uid = req.user.uid;
+  res.json({ usesWebDisplay: uid === process.env.WEB_DISPLAY_USER });
+};
+
+export const setWebDisplayPoem = async (req, res) => {
+  try {
+    const userid = req.user.uid;
+    const { poemId } = req.body;
+
+    const allowlistRef = db.collection('allowlist');
+    const snapshot = await allowlistRef.where('uid', '==', userid).limit(1).get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ error: 'User not found in allowlist' });
+    }
+
+    await snapshot.docs[0].ref.update({ webDisplayPoem: poemId || null });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error setting web display poem:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

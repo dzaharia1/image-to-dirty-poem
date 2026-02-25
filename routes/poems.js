@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { listPoems, getPoem, getPublicPoem, toggleFavorite, deletePoem, generatePoem, generateSketch } from '../controllers/poemController.js';
+import { listPoems, getPoem, getPublicPoem, getWebDisplayPoem, toggleFavorite, deletePoem, generatePoem, generateSketch } from '../controllers/poemController.js';
 
 const router = express.Router();
 
@@ -11,6 +11,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/poemList', listPoems);
 router.get('/getPoem', getPoem);
 router.get('/public/getPoem', getPublicPoem);
+router.get('/public/getWebDisplayPoem', getWebDisplayPoem);
 
 router.post('/generate-poem', (req, res, next) => {
   const contentType = req.headers['content-type'] || '';
